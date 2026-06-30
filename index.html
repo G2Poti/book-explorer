@@ -279,37 +279,53 @@
                 </div>
             </details>
 			<details>
-                <summary>Advanced Settings</summary>
-                <div class="filter-content" style="padding: 0.75rem 0.5rem;">
-                    <div class="toggle-switch-wrapper" style="margin-bottom: 0.5rem; justify-content: space-between;">
-                        <span class="toggle-label" style="text-transform:none;">Custom Fetch Limit</span>
-                        <label class="theme-switch" for="customLimitToggle">
-                            <input type="checkbox" id="customLimitToggle">
-                            <div class="slider url-slider"></div>
-                        </label>
-                    </div>
+    <summary>Advanced Settings</summary>
+    <div class="filter-content" style="padding: 0.75rem 0.5rem;">
+        
+        <div id="apiAdvancedSettings">
+            <div class="toggle-switch-wrapper" style="margin-bottom: 0.8rem; justify-content: space-between;">
+                <span class="toggle-label" style="text-transform:none;" title="Aggregates and intelligently combines matching subject tags for more accurate autocomplete suggestions.">Enhanced Autocomplete Metrics</span>
+                <label class="theme-switch" for="enhancedAutofillToggle">
+                    <input type="checkbox" id="enhancedAutofillToggle" checked>
+                    <div class="slider url-slider"></div>
+                </label>
+            </div>
 
-                    <div id="extendedLimitWrapper" class="toggle-switch-wrapper" style="margin-bottom: 0.5rem; justify-content: space-between; opacity: 0.5; pointer-events: none; transition: opacity 0.2s;">
-                        <span class="toggle-label" style="text-transform:none;">Extended Limits</span>
-                        <label class="theme-switch" for="extendedLimitToggle">
-                            <input type="checkbox" id="extendedLimitToggle" disabled>
-                            <div class="slider danger-slider"></div>
-                        </label>
-                    </div>
+            <div class="toggle-switch-wrapper" style="margin-bottom: 0.5rem; justify-content: space-between;">
+                <span class="toggle-label" style="text-transform:none;">Custom Fetch Limit</span>
+                <label class="theme-switch" for="customLimitToggle">
+                    <input type="checkbox" id="customLimitToggle">
+                    <div class="slider url-slider"></div>
+                </label>
+            </div>
 
-                    <div id="extendedWarning" style="display: none; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; padding: 0.6rem; margin-bottom: 0.8rem; font-size: 0.75rem; color: var(--text); border-radius: 0 4px 4px 0; line-height: 1.4;">
-                        <strong>⚠️ WARNING:</strong> Requesting up to 100,000 items in a single query will likely cause the OpenLibrary API to forcefully close your connection, crash your browser tab via memory overflow, or trigger an automated IP ban. Proceed at your own risk.
-                    </div>
+            <div id="extendedLimitWrapper" class="toggle-switch-wrapper" style="margin-bottom: 0.5rem; justify-content: space-between; opacity: 0.5; pointer-events: none; transition: opacity 0.2s;">
+                <span class="toggle-label" style="text-transform:none;">Extended Limits</span>
+                <label class="theme-switch" for="extendedLimitToggle">
+                    <input type="checkbox" id="extendedLimitToggle" disabled>
+                    <div class="slider danger-slider"></div>
+                </label>
+            </div>
 
-                    <div id="customLimitContainer" style="display: none; flex-direction: column; gap: 0.4rem;">
-                        <div style="display:flex; justify-content:space-between; font-size: 0.85rem; font-weight:600; opacity:0.9;">
-                            <span>Books per query</span>
-                            <input type="text" id="limitValueDisplay" value="100" style="width: 75px; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--accent); font-weight: bold; text-align: right; padding: 2px 4px; font-family: inherit; font-size: 0.85rem; transition: all 0.2s;">
-                        </div>
-                        <input type="range" id="fetchLimitSlider" min="10" max="1000" step="10" value="100" style="padding:0; cursor:pointer;">
-                    </div>
+            <div id="extendedWarning" style="display: none; background: rgba(239, 68, 68, 0.1); border-left: 3px solid #ef4444; padding: 0.6rem; margin-bottom: 0.8rem; font-size: 0.75rem; color: var(--text); border-radius: 0 4px 4px 0; line-height: 1.4;">
+                <strong>⚠️ WARNING:</strong> Requesting up to 100,000 items in a single query will likely cause the OpenLibrary API to forcefully close your connection, crash your browser tab via memory overflow, or trigger an automated IP ban. Proceed at your own risk.
+            </div>
+
+            <div id="customLimitContainer" style="display: none; flex-direction: column; gap: 0.4rem;">
+                <div style="display:flex; justify-content:space-between; font-size: 0.85rem; font-weight:600; opacity:0.9;">
+                    <span>Books per query</span>
+                    <input type="text" id="limitValueDisplay" value="100" style="width: 75px; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--accent); font-weight: bold; text-align: right; padding: 2px 4px; font-family: inherit; font-size: 0.85rem; transition: all 0.2s;">
                 </div>
-            </details>
+                <input type="range" id="fetchLimitSlider" min="10" max="1000" step="10" value="100" style="padding:0; cursor:pointer;">
+            </div>
+        </div>
+
+        <div id="savedAdvancedSettings" style="display: none; text-align: center; opacity: 0.7; font-size: 0.85rem; padding: 1rem 0; font-style: italic;">
+            Local Favourites operations are instantaneous. No advanced configurations are required.
+        </div>
+
+    </div>
+</details>
 
         </aside>
 
@@ -335,7 +351,7 @@
                     <button id="toggleAllBtn" class="nav-btn" style="display: none;"></button>
 					<button id="viewSavedBtn" class="nav-btn" title="Toggle Saved Bookmarks">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
-                        Favourites <span id="savedCount" class="saved-badge" style="width: 25px">0</span>
+                        Favourites <span id="savedCount" class="saved-badge">0</span>
                     </button>
                 </div>
             </div>

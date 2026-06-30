@@ -72,6 +72,9 @@ const DOM = {
 	extendedLimitWrapper: document.getElementById('extendedLimitWrapper'),
     extendedLimitToggle: document.getElementById('extendedLimitToggle'),
     extendedWarning: document.getElementById('extendedWarning'),
+	enhancedAutofillToggle: document.getElementById('enhancedAutofillToggle'),
+    apiAdvancedSettings: document.getElementById('apiAdvancedSettings'),
+    savedAdvancedSettings: document.getElementById('savedAdvancedSettings'),
 	gridToggle: document.getElementById('gridToggle'), listToggle: document.getElementById('listToggle'),
 	toggleAllBtn: document.getElementById('toggleAllBtn'), viewSavedBtn: document.getElementById('viewSavedBtn')
 };
@@ -151,6 +154,7 @@ const toggleBookmark = (bookData) => {
             edition_count: bookData.edition_count,
             savedAt: Date.now()
         };
+		cacheBookTokens(slim);
         savedBookmarks.push(slim);
     }
     localforage.setItem('ole_bookmarks', savedBookmarks).catch(console.error);
@@ -400,10 +404,14 @@ const appendKeyboardListeners = () => {
 };
 appendKeyboardListeners();
 
+let localFilterTimer = null;
 watchInputs.forEach(input => {
     input.addEventListener('input', () => {
         checkInputs();
-        if (currentViewMode === 'saved') applyLocalFilters();
+        if (currentViewMode === 'saved') {
+            clearTimeout(localFilterTimer);
+            localFilterTimer = setTimeout(applyLocalFilters, 150);
+        }
     });
     input.addEventListener('change', checkInputs);
 });
@@ -496,43 +504,67 @@ const arrayHasAllTokens = (arr, tokens) => {
     return tokens.every(tok => allWords.includes(tok)); // Exact word match
 };
 
+// Pre-calculate Search Tokens to eliminate regex parsing bottlenecks
+const cacheBookTokens = (b) => {
+    if (b._tokensCached) return;
+    b._sub = new Set(getBookTokens(b.subject));
+    b._plc = new Set(getBookTokens(b.place));
+    b._per = new Set(getBookTokens(b.person));
+    b._lang = new Set(getBookTokens(b.language));
+    b._auth = new Set(getBookTokens(b.author_name));
+    b._ttl = b.title ? b.title.toLowerCase() : '';
+    b._tokensCached = true;
+};
+
 const getLocalFilteredBooks = () => {
     let filtered = [...savedBookmarks];
-    const incSub = tagManagerInc.getTags().map(t => t.toLowerCase());
-    const excSub = tagManagerExc.getTags().map(t => t.toLowerCase());
     
-    const incPlace = tokenize(DOM.incPlace.value);
-    const incPerson = tokenize(DOM.incPerson.value);
-    const incLang = tokenize(DOM.incLang.value);
-    const excPlace = tokenize(DOM.excPlace.value);
-    const excPerson = tokenize(DOM.excPerson.value);
-    const excLang = tokenize(DOM.excLang.value);
-
+    const incSub = tagManagerInc.getTags().flatMap(t => getBookTokens([t]));
+    const excSub = tagManagerExc.getTags().flatMap(t => getBookTokens([t]));
+    const incPlace = getBookTokens([DOM.incPlace.value]);
+    const incPerson = getBookTokens([DOM.incPerson.value]);
+    const incLang = getBookTokens([DOM.incLang.value]);
+    const excPlace = getBookTokens([DOM.excPlace.value]);
+    const excPerson = getBookTokens([DOM.excPerson.value]);
+    const excLang = getBookTokens([DOM.excLang.value]);
     const incTitle = DOM.incTitle.value.trim().toLowerCase();
-    const incAuthor = DOM.incAuthor.value.trim().toLowerCase();
+    const incAuthor = getBookTokens([DOM.incAuthor.value]);
+    
     const minYear = parseInt(DOM.minY.value) || null;
     const maxYear = parseInt(DOM.maxY.value) || null;
     const minStar = parseFloat(DOM.minStarRating.value) || 0;
     const minRCount = parseInt(DOM.minRatings.value) || 0;
 
-    // Strict AND logic applied to includes
-    if (incSub.length) filtered = filtered.filter(b => arrayHasAllTokens(b.subject, incSub));
-    if (incPlace.length) filtered = filtered.filter(b => arrayHasAllTokens(b.place, incPlace));
-    if (incPerson.length) filtered = filtered.filter(b => arrayHasAllTokens(b.person, incPerson));
-    if (incLang.length) filtered = filtered.filter(b => arrayHasAllTokens(b.language, incLang));
+    const hasAll = (set, arr) => arr.length > 0 && arr.every(t => set.has(t));
+    const hasAny = (set, arr) => arr.length > 0 && arr.some(t => set.has(t));
 
-    // Excludes remain AnyToken (if ANY excluded tag is found, toss the book)
-    if (excSub.length) filtered = filtered.filter(b => !arrayHasAnyToken(b.subject, excSub));
-    if (excPlace.length) filtered = filtered.filter(b => !arrayHasAnyToken(b.place, excPlace));
-    if (excPerson.length) filtered = filtered.filter(b => !arrayHasAnyToken(b.person, excPerson));
-    if (excLang.length) filtered = filtered.filter(b => !arrayHasAnyToken(b.language, excLang));
+    if (incSub.length) filtered = filtered.filter(b => hasAll(b._sub, incSub));
+    if (incPlace.length) filtered = filtered.filter(b => hasAll(b._plc, incPlace));
+    if (incPerson.length) filtered = filtered.filter(b => hasAll(b._per, incPerson));
+    if (incLang.length) filtered = filtered.filter(b => hasAll(b._lang, incLang));
 
-    if (incTitle) filtered = filtered.filter(b => b.title && b.title.toLowerCase().includes(incTitle));
-    if (incAuthor) filtered = filtered.filter(b => arrayHasAnyToken(b.author_name, [incAuthor]));
+    if (excSub.length) filtered = filtered.filter(b => !hasAny(b._sub, excSub));
+    if (excPlace.length) filtered = filtered.filter(b => !hasAny(b._plc, excPlace));
+    if (excPerson.length) filtered = filtered.filter(b => !hasAny(b._per, excPerson));
+    if (excLang.length) filtered = filtered.filter(b => !hasAny(b._lang, excLang));
+
+    if (incTitle) filtered = filtered.filter(b => b._ttl.includes(incTitle));
+    if (incAuthor.length) filtered = filtered.filter(b => hasAny(b._auth, incAuthor));
+    
     if (minYear != null) filtered = filtered.filter(b => (b.first_publish_year || 0) >= minYear);
     if (maxYear != null) filtered = filtered.filter(b => (b.first_publish_year || 0) <= maxYear);
     if (minStar > 0) filtered = filtered.filter(b => (b.ratings_average || 0) >= minStar);
     if (minRCount > 0) filtered = filtered.filter(b => (b.ratings_count || 0) >= minRCount);
+
+    const sortVal = DOM.sort.value;
+    const d = sortDirection === 'desc' ? 1 : -1;
+
+    if (sortVal === 'date') filtered.sort((a, b) => d * ((b.savedAt || 0) - (a.savedAt || 0)));
+    else if (sortVal === 'rating') filtered.sort((a, b) => d * ((b.ratings_average || 0) - (a.ratings_average || 0)));
+    else if (sortVal === 'reviews') filtered.sort((a, b) => d * ((b.ratings_count || 0) - (a.ratings_count || 0)));
+    else if (sortVal === 'editions') filtered.sort((a, b) => d * ((b.edition_count || 0) - (a.edition_count || 0)));
+    else if (sortVal === 'new') filtered.sort((a, b) => d * ((b.first_publish_year || 0) - (a.first_publish_year || 0)));
+    else if (sortVal === 'random') filtered.sort(() => Math.random() - 0.5);
 
     return filtered;
 };
@@ -754,25 +786,20 @@ const setupAutocomplete = (inputId, listId, indicatorId, ghostId, isLocalMode, m
                     });
 
                 // EXPERIMENTAL LOGIC: Order-agnostic, punctuation-agnostic aggregation
-                viableCandidates.forEach(anchor => {
-                    let aggregatedCount = 0;
-                    
-                    viableCandidates.forEach(target => {
-                        // Check if EVERY word in the anchor exists somewhere in the target
-                        const isSubset = anchor.tokens.every(token => target.tokens.includes(token));
-                        
-                        if (isSubset) {
-                            aggregatedCount += target.work_count || 0;
-                        }
+                
+				if (DOM.enhancedAutofillToggle.checked) {
+                    // EXPERIMENTAL LOGIC: Order-agnostic, punctuation-agnostic aggregation
+                    viableCandidates.forEach(anchor => {
+                        let aggregatedCount = 0;
+                        viableCandidates.forEach(target => {
+                            const isSubset = anchor.tokens.every(token => target.tokens.includes(token));
+                            if (isSubset) aggregatedCount += target.work_count || 0;
+                        });
+                        anchor.aggregated_count = aggregatedCount;
                     });
-                    
-                    anchor.aggregated_count = aggregatedCount;
-                });
-
-                // Overwrite the original work_count so the UI displays the new total
-                viableCandidates.forEach(c => { 
-                    c.work_count = c.aggregated_count; 
-                });
+    
+                    viableCandidates.forEach(c => { c.work_count = c.aggregated_count; });
+                }
 
                 currentMatches = viableCandidates
                     .sort((a, b) => b.work_count - a.work_count)
@@ -797,18 +824,8 @@ setupAutocomplete('incSubject', 'incSubjectList', 'incSubjectLoading', 'incSubje
 setupAutocomplete('excSubject', 'excSubjectList', 'excSubjectLoading', 'excSubjectGhost', () => currentViewMode === 'saved', tagManagerExc);
 
 const applyLocalFilters = () => {
-	cachedSubjectCounts = null; // Invalidate cache when filters change
+    cachedSubjectCounts = null; // Invalidate cache when filters change
     const filtered = getLocalFilteredBooks();
-    const sortVal = DOM.sort.value;
-    const d = sortDirection === 'desc' ? 1 : -1;
-
-    if (sortVal === 'date') filtered.sort((a, b) => d * ((b.savedAt || 0) - (a.savedAt || 0)));
-    else if (sortVal === 'rating') filtered.sort((a, b) => d * ((b.ratings_average || 0) - (a.ratings_average || 0)));
-    else if (sortVal === 'reviews') filtered.sort((a, b) => d * ((b.ratings_count || 0) - (a.ratings_count || 0)));
-    else if (sortVal === 'editions') filtered.sort((a, b) => d * ((b.edition_count || 0) - (a.edition_count || 0)));
-    else if (sortVal === 'new') filtered.sort((a, b) => d * ((b.first_publish_year || 0) - (a.first_publish_year || 0)));
-    else if (sortVal === 'random') filtered.sort(() => Math.random() - 0.5);
-
     renderSavedCollection(filtered);
 };
 
@@ -1271,17 +1288,35 @@ DOM.extendedLimitToggle.addEventListener('change', (e) => {
     DOM.extendedWarning.style.display = isExtended ? 'block' : 'none';
     
     if (isExtended) {
+        DOM.fetchLimitSlider.min = '100'; // Changes min offset to fix 100000 cap
         DOM.fetchLimitSlider.max = '100000';
         DOM.fetchLimitSlider.step = '100'; 
     } else {
-        // Set max and step FIRST so 1,000 becomes a valid integer on the track
+        const currentVal = parseInt(DOM.fetchLimitSlider.value);
+        DOM.fetchLimitSlider.min = '10';
         DOM.fetchLimitSlider.max = '1000';
         DOM.fetchLimitSlider.step = '10';
-        // Now safely clamp the value
-        DOM.fetchLimitSlider.value = Math.min(parseInt(DOM.fetchLimitSlider.value), 1000); 
+        DOM.fetchLimitSlider.value = Math.min(currentVal, 1000); 
         DOM.limitValueDisplay.value = parseInt(DOM.fetchLimitSlider.value).toLocaleString();
     }
 });
+
+const validateAndApplyInputLimit = () => {
+    let val = parseInt(DOM.limitValueDisplay.value.replace(/[^0-9]/g, ''));
+    if (isNaN(val)) val = 100;
+    
+    const isExt = DOM.extendedLimitToggle.checked;
+    const maxAllowed = isExt ? 100000 : 1000;
+    const minAllowed = isExt ? 100 : 10;
+    const step = isExt ? 100 : 10;
+    
+    // Clamp limits and strictly snap to nearest step 
+    let clampedVal = Math.max(minAllowed, Math.min(val, maxAllowed));
+    clampedVal = Math.round(clampedVal / step) * step;
+    
+    DOM.fetchLimitSlider.value = clampedVal;
+    DOM.limitValueDisplay.value = clampedVal.toLocaleString();
+};
 
 DOM.fetchLimitSlider.addEventListener('input', (e) => {
     DOM.limitValueDisplay.value = parseInt(e.target.value).toLocaleString();
@@ -1293,17 +1328,6 @@ DOM.limitValueDisplay.addEventListener('focus', (e) => {
     e.target.value = DOM.fetchLimitSlider.value;
     e.target.select(); 
 });
-
-const validateAndApplyInputLimit = () => {
-    let val = parseInt(DOM.limitValueDisplay.value.replace(/[^0-9]/g, ''));
-    if (isNaN(val)) val = 100;
-    
-    const maxAllowed = DOM.extendedLimitToggle.checked ? 100000 : 1000;
-    const clampedVal = Math.max(1, Math.min(val, maxAllowed));
-    
-    DOM.fetchLimitSlider.value = clampedVal;
-    DOM.limitValueDisplay.value = clampedVal.toLocaleString();
-};
 
 DOM.limitValueDisplay.addEventListener('blur', validateAndApplyInputLimit);
 
@@ -1324,6 +1348,8 @@ DOM.viewSavedBtn.addEventListener('click', () => {
         DOM.viewSavedBtn.classList.add('active');
         DOM.sortDateOpt.style.display = 'block';
         DOM.sortRelevanceOpt.style.display = 'none'; 
+		DOM.apiAdvancedSettings.style.display = 'none';
+        DOM.savedAdvancedSettings.style.display = 'block';
         restoreModeState('saved');
         applyLocalFilters();
         if (DOM.persistToggle.checked) saveStateToHash();
@@ -1331,7 +1357,9 @@ DOM.viewSavedBtn.addEventListener('click', () => {
         currentViewMode = 'search';
         DOM.viewSavedBtn.classList.remove('active');
         DOM.sortDateOpt.style.display = 'none';
-        DOM.sortRelevanceOpt.style.display = 'block'; 
+        DOM.sortRelevanceOpt.style.display = 'block';
+		DOM.apiAdvancedSettings.style.display = 'block';
+        DOM.savedAdvancedSettings.style.display = 'none';
         restoreModeState('search');
         DOM.grid.innerHTML = '';
         if (DOM.persistToggle.checked) saveStateToHash();
@@ -1419,8 +1447,11 @@ localforage.getItem('ole_bookmarks').then(data => {
     }
     
     savedBookmarks = data || [];
-    savedBookmarks.forEach(b => { if(b.subject) b.subject = cleanSubjects(b.subject); });
-    updateSavedBadge();
+	savedBookmarks.forEach(b => { 
+		if(b.subject) b.subject = cleanSubjects(b.subject); 
+		cacheBookTokens(b); 
+	});
+	updateSavedBadge();
     
     // Boot the app UI once the data is loaded
     if (loadStateFromHash()) {
